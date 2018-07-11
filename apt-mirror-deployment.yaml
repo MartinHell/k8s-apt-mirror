@@ -55,11 +55,6 @@ spec:
       - name: data
         persistentVolumeClaim:
           claimName: data
-#      - name: apt-mirror-sidecar
-#        image: martinhell/apt-mirror-docker:cron-sidecar-latest
-#        volumeMounts:
-#        . name: data
-#          mountPath: /var/spool/apt-mirror
   volumeClaimTemplates:
   - metadata:
       name: data
