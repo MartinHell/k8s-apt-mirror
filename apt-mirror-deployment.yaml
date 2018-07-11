@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: apache
+  labels:
+    app: apt-mirror
+spec:
+  ports:
+  - port: 80
+    name: web
+  clusterIP: None
+  selector:
+    app: apache
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  selector:
+    matchLabels:
+      app: apt-mirror
+  serviceName: "apache"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: apt-mirror
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: apache
+        image: martinhell/apt-mirror-docker:apache-latest
+        ports:
+        - containerPort: 8080
+          name: web
+        volumeMounts:
+        - name: data
+          mountPath: /usr/local/apache2/htdocs
+      initContainers:
+      - name: apt-mirror
+        image: martinhell/apt-mirror-docker:latest
+        volumeMounts:
+        - name: data
+          mountPath: /var/spool/apt-mirror
+        - name: apt-mirror-config
+          mountPath: /etc/apt/
+      volumes:
+      - name: apt-mirror-config
+        configMap:
+          name: apt-mirror-config
+          items:
+            - key: mirror.list
+              path: mirror.list
+      - name: data
+        persistentVolumeClaim:
+          claimName: data
+#      - name: apt-mirror-sidecar
+#        image: martinhell/apt-mirror-docker:cron-sidecar-latest
+#        volumeMounts:
+#        . name: data
+#          mountPath: /var/spool/apt-mirror
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "manual"
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: apt-mirror-cron
+spec:
+  schedule: "0 0 * * *"
+  concurrencyPolicy: Replace
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: apt-mirror-cron
+            image: martinhell/apt-mirror-docker:latest
+            volumeMounts:
+            - name: data
+              mountPath: /var/spool/apt-mirror
+            - name: apt-mirror-config
+              mountPath: /etc/apt/
+          volumes:
+          - name: apt-mirror-config
+            configMap:
+              name: apt-mirror-config
+              items:
+                - key: mirror.list
+                  path: mirror.list
+          - name: data
+            persistentVolumeClaim:
+              claimName: data
+#            args:
+#            - /bin/bash
+#            - -c
+#            - apt-mirror
+          restartPolicy: OnFailure
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "manual"
+      resources:
+        requests:
+          storage: 1Gi
